@@ -1,24 +1,28 @@
 package com.shw.gubnor
 
 import akka.actor.{Actor, Props, Terminated}
-import com.shw.gubnor.CounterActor.{Add, GetValue, Increment}
+import com.shw.gubnor.CounterActor.{Add, CounterValue, GetValue, Increment}
+import akka.pattern.ask
+import akka.util.Timeout
 
-class CounterActor(name: String) extends CounterCheckActor(name) {
+import scala.concurrent.Future
+import scala.concurrent.duration._
+
+class CounterActor(name: String) extends Actor {
 
   var counter = 0L
 
-  def receive = receiveTick orElse {
+  def receive = {
     case Increment => counter += 1
     case n: Add => counter += n.v
-    case GetValue => sender ! counter
+    case GetValue => sender ! CounterValue(counter)
   }
-
-  override def getCurrent: Long = counter
 }
 
 object CounterActor {
   case object Increment
   case object GetValue
+  case class CounterValue(v: Long)
   case class Add(v: Long)
 
   def props(name: String): Props = Props(new CounterActor(name))
@@ -27,7 +31,19 @@ object CounterActor {
 
 import akka.routing.{ ActorRefRoutee, RoundRobinRoutingLogic, Router }
 
-class CounterPoolActor(numRoutees: Int) extends Actor {
+class CounterPoolActor(name: String, numRoutees: Int) extends Actor {
+
+  implicit val ec = context.system.dispatcher
+  implicit val timeout: Timeout = Timeout(5 seconds)
+
+  def getCurrent = {
+    val cntFut = context.children.map { c =>
+      (c ? GetValue).mapTo[Long]
+    }
+
+    Future.sequence(cntFut).map(_.sum)
+  }
+
   var router = {
     val routees = 1.to(numRoutees) map { i =>
       val r = context.actorOf(Props(new CounterActor("counter " + i)))

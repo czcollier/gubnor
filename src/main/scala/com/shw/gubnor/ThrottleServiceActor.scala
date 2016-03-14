@@ -1,11 +1,12 @@
 package com.shw.gubnor
 
-import akka.actor.{Actor, ActorRef, Props, Terminated}
+import akka.actor.{ActorRef, Props}
 import com.shw.gubnor.CounterActor.Increment
+import com.shw.gubnor.Main.CounterType
 import spray.routing._
 
 class ThrottleServiceActor(
-    val doCounting: Boolean,
+    val counterType: CounterType,
     counterActor: ActorRef,
     connector: ActorRef) extends ProxyServiceActor(connector) {
 
@@ -14,8 +15,12 @@ class ThrottleServiceActor(
   def settings = context.system.settings
 
   val rcRoute = { ctx: RequestContext =>
-    if (doCounting)
-      counterActor ! Increment
+    counterType match {
+      case CounterType.Actor => counterActor ! Increment
+      case CounterType.Agent => AgentCounters.testCounter1 send (_ + 1)
+      case CounterType.NoCounter => ()
+    }
+
     proxyRoute(ctx)
   }
 
@@ -27,8 +32,8 @@ class ThrottleServiceActor(
 }
 
 object ThrottleServiceActor {
-  def props(doCounting: Boolean, counterActor: ActorRef, connector: ActorRef): Props =
-    Props(new ThrottleServiceActor(doCounting, counterActor, connector))
+  def props(counterType: CounterType, counterActor: ActorRef, connector: ActorRef): Props =
+    Props(new ThrottleServiceActor(counterType, counterActor, connector))
 }
 
 
