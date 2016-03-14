@@ -49,12 +49,12 @@ object Main extends App {
 
   val cliOptsParser = new OptionParser[GubnorConfig]("java -jar gubnor.jar") {
     help("help").text("Show help (this message) and exit")
-    opt[String]("interface")         abbr("bi")  action { (x, c) => c.copy(bindInterface = x) } text (s"interface to bind to. Default: ${defaults.bindPort}")
-    opt[Int]('p', "port")            abbr("bp")  action { (x, c) => c.copy(bindPort = x) }      text (s"port to bind to. Default: ${defaults.bindPort}")
-    opt[String]("endpointHost")      abbr("eh")  action { (x, c) => c.copy(endpointHost = x) }  text (s"host of endpoint proxied to. Default: ${defaults.endpointHost}")
-    opt[Int]("endpointPort")         abbr("ep")  action { (x, c) => c.copy(endpointPort = x) }  text (s"port of endpoint proxied to. Default: ${defaults.bindPort}")
-    opt[CounterType]("counter-type") abbr ("nc") action { (x, c) => c.copy(counterType = x) }   text ("counter type (actor, agent, none)")
-    opt[Int]("actor-pool-size")      abbr("aps") action { (x, c) => c.copy(actorPoolSize = x) } text (s"for experimenting with pool sizes of various kinds of actors")
+    opt[String]("interface")         abbr("bi") action { (x, c) => c.copy(bindInterface = x) } text (s"interface to bind to. Default: ${defaults.bindPort}")
+    opt[Int]('p', "port")            abbr("bp") action { (x, c) => c.copy(bindPort = x) }      text (s"port to bind to. Default: ${defaults.bindPort}")
+    opt[String]("endpointHost")      abbr("eh") action { (x, c) => c.copy(endpointHost = x) }  text (s"host of endpoint proxied to. Default: ${defaults.endpointHost}")
+    opt[Int]("endpointPort")         abbr("ep") action { (x, c) => c.copy(endpointPort = x) }  text (s"port of endpoint proxied to. Default: ${defaults.bindPort}")
+    opt[CounterType]("counter-type") abbr("ct") action { (x, c) => c.copy(counterType = x) }   text ("counter type (actor, agent, none)")
+    opt[Int]("actor-pool-size")      abbr("ps") action { (x, c) => c.copy(actorPoolSize = x) } text (s"for experimenting with pool sizes of various kinds of actors")
   }
 
   cliOptsParser.parse(args, GubnorConfig()) map { cfg =>
