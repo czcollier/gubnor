@@ -1,7 +1,7 @@
 package com.shw.gubnor
 
 import akka.actor.{Actor, ActorRef}
-import com.shw.gubnor.CounterActor.CounterValue
+import com.shw.gubnor.CounterEvents.CounterValue
 
 class PrinterActor extends Actor {
   val subscribers = List[ActorRef]()

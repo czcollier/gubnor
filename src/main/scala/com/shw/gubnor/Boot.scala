@@ -8,6 +8,7 @@ import spray.can.Http
 import spray.can.Http.ClientConnectionType
 import akka.pattern.ask
 import akka.util.Timeout
+import com.shw.gubnor.APIHitEventBus.APIHit
 
 import scala.concurrent.duration._
 
@@ -67,13 +68,24 @@ object Main extends App {
 
     implicit val executionContext = system.dispatcher
 
-    val counterActor = system.actorOf(Props(new CounterActor("counter1")))
-    val counterChecker =
-      cfg.counterType match {
-        case CounterType.Actor => Some(system.actorOf(Props(new CounterCheckActor("check1", counterActor))))
-        case CounterType.Agent => Some(system.actorOf(Props(new AgentCountCheckActor(AgentCounters.testCounter1, "agent1"))))
-        case CounterType.NoCounter => None
-      }
+
+    val throttleEventBus = new ThrottleEventBus()
+    val hitCountEventBus = new APIHitEventBus()
+
+    val throttle1 = system.actorOf(LeakyBucketThrottleActor.props(
+      APIHit("*", "*"),
+      throttleEventBus,
+      hitCountEventBus,
+      bucketSize = 20000, drainFrequency = 1 seconds, drainSize = 5000))
+
+    val throttle2 = system.actorOf(LeakyBucketThrottleActor.props(
+      APIHit("/examples/*", "*"),
+      throttleEventBus,
+      hitCountEventBus,
+      bucketSize = 10, drainFrequency = 20 minutes, drainSize = 1))
+
+    val counterChecker1 = system.actorOf(Props(new CounterCheckActor("check1", throttle1)))
+    val counterChecker2 = system.actorOf(Props(new CounterCheckActor("check2", throttle2)))
 
     val setup = Http.HostConnectorSetup(
       host = cfg.endpointHost,
@@ -85,7 +97,7 @@ object Main extends App {
 
     http ? (setup) map {
       case Http.HostConnectorInfo(connector, _) =>
-        val service = system.actorOf(Props(new ThrottleServiceActor(cfg.counterType, counterActor, connector)))
+        val service = system.actorOf(Props(new ThrottleServiceActor(throttleEventBus, hitCountEventBus, connector)))
         http ! Http.Bind(service, interface = cfg.bindInterface, port = cfg.bindPort)
     }
   }

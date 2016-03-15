@@ -1,30 +1,57 @@
 package com.shw.gubnor
 
 import akka.actor.{ActorRef, Props}
-import com.shw.gubnor.CounterActor.Increment
-import com.shw.gubnor.Main.CounterType
+import com.shw.gubnor.APIHitEventBus.APIHit
+import com.shw.gubnor.Throttle.{RateOutOfBounds, RateWithinBounds}
 import spray.routing._
+import scala.collection.mutable
 
 class ThrottleServiceActor(
-    val counterType: CounterType,
-    counterActor: ActorRef,
+    throttleEventBus: ThrottleEventBus,
+    apiHitEventBus: APIHitEventBus,
     connector: ActorRef) extends ProxyServiceActor(connector) {
 
   val logEmitter = context.actorOf(Props[LogEmitterActor])
 
+  val tempRealm = "realm1"
+
+  val throttled = mutable.Set[APIHit]()
+
   def settings = context.system.settings
 
-  val rcRoute = { ctx: RequestContext =>
-    counterType match {
-      case CounterType.Actor => counterActor ! Increment
-      case CounterType.Agent => AgentCounters.testCounter1 send (_ + 1)
-      case CounterType.NoCounter => ()
-    }
-
-    proxyRoute(ctx)
+  override def preStart = {
+    throttleEventBus.subscribe(self, APIHit("*", "*"))
   }
 
-  def receive = runRoute(rcRoute)
+  val throttledRoute: Route = ctx =>
+    ctx.complete(503, "throttled")
+
+  val openRoute: Route = { ctx: RequestContext =>
+    val hit = APIHit(ctx.request.uri.path.toString, tempRealm)
+    apiHitEventBus.publish(hit)
+    println("throttled: " + throttled)
+    val isThrottled = throttled.collectFirst {
+      case t => hit.matches(t)
+    }.getOrElse(false)
+
+    println("is throttled: " + isThrottled)
+    if (isThrottled) ctx.complete(503, "throttled") else proxy(ctx)
+  }
+
+  val receiveThrottled: Receive = runRoute(throttledRoute) orElse {
+    case RateWithinBounds(n) => context.become(receiveOpen)
+  }
+
+  val receiveOpen: Receive = runRoute(openRoute) orElse manageThrottled
+
+  def manageThrottled: Receive = {
+    case RateOutOfBounds(n) => throttled += n
+    case RateWithinBounds(n) => throttled -= n
+  }
+
+  def receive = {
+    receiveOpen
+  }
 
   def emit(capture: String): Unit = {
     logEmitter ! capture
@@ -32,8 +59,8 @@ class ThrottleServiceActor(
 }
 
 object ThrottleServiceActor {
-  def props(counterType: CounterType, counterActor: ActorRef, connector: ActorRef): Props =
-    Props(new ThrottleServiceActor(counterType, counterActor, connector))
+  def props(throttleEventBus: ThrottleEventBus, apiHitEventBus: APIHitEventBus, connector: ActorRef): Props =
+    Props(new ThrottleServiceActor(throttleEventBus, apiHitEventBus, connector))
 }
 
 

@@ -1,9 +1,9 @@
 package com.shw.gubnor
 
 import akka.actor.{Actor, Props, Terminated}
-import com.shw.gubnor.CounterActor.{Add, CounterValue, GetValue, Increment}
 import akka.pattern.ask
 import akka.util.Timeout
+import com.shw.gubnor.CounterEvents._
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -19,12 +19,7 @@ class CounterActor(name: String) extends Actor {
   }
 }
 
-object CounterActor {
-  case object Increment
-  case object GetValue
-  case class CounterValue(v: Long)
-  case class Add(v: Long)
-
+object CounterActor  {
   def props(name: String): Props = Props(new CounterActor(name))
 }
 
@@ -46,7 +41,7 @@ class CounterPoolActor(name: String, numRoutees: Int) extends Actor {
 
   var router = {
     val routees = 1.to(numRoutees) map { i =>
-      val r = context.actorOf(Props(new CounterActor("counter " + i)))
+      val r = context.actorOf(CounterActor.props("counter " + i))
       context watch r
       ActorRefRoutee(r)
     }

@@ -1,8 +1,8 @@
 package com.shw.gubnor
 
 import akka.actor.{Actor, ActorRef}
-import com.shw.gubnor.CounterActor.{CounterValue, GetValue}
 import com.shw.gubnor.CounterCheckActor.Tick
+import com.shw.gubnor.CounterEvents.{CounterValue, GetValue}
 
 import scala.concurrent.duration._
 
