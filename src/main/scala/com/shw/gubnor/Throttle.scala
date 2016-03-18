@@ -9,8 +9,10 @@ class Throttle {
 
 object Throttle {
   case object Tick
-  case class ChangeLimit(v: Long)
-  case class ChangeFrequency(v: FiniteDuration)
+  trait ChangeCommand
+  case class ChangeLimit(v: Long) extends ChangeCommand
+  case class ChangeFrequency(v: FiniteDuration) extends ChangeCommand
+  case class CommandAck[T <: ChangeCommand](cmd: T)
   trait RateBoundaryEvent { val key: APIHit }
   case class RateOutOfBounds(key: APIHit) extends RateBoundaryEvent
   case class RateWithinBounds(key: APIHit) extends RateBoundaryEvent

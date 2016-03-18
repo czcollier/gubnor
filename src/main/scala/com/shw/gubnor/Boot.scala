@@ -2,14 +2,16 @@ package com.shw.gubnor
 
 import akka.actor.{ActorSystem, Props}
 import akka.io.{IO, Tcp}
-import com.typesafe.config.Config
+import com.typesafe.config.{Config, ConfigObject}
 import scopt.OptionParser
 import spray.can.Http
 import spray.can.Http.ClientConnectionType
 import akka.pattern.ask
 import akka.util.Timeout
 import com.shw.gubnor.APIHitEventBus.APIHit
+import kamon.Kamon
 
+import scala.collection.JavaConversions._
 import scala.concurrent.duration._
 
 object Main extends App {
@@ -48,6 +50,7 @@ object Main extends App {
   def configuration = config.getOrElse(defaults)
   var systemConfig: Option[Config] = None
 
+
   val cliOptsParser = new OptionParser[GubnorConfig]("java -jar gubnor.jar") {
     help("help").text("Show help (this message) and exit")
     opt[String]("interface")         abbr("bi") action { (x, c) => c.copy(bindInterface = x) } text (s"interface to bind to. Default: ${defaults.bindPort}")
@@ -59,8 +62,11 @@ object Main extends App {
   }
 
   cliOptsParser.parse(args, GubnorConfig()) map { cfg =>
+
+    Kamon.start()
+
     config = Some(cfg)
-    implicit val system = ActorSystem("spray-can")
+    implicit val system = ActorSystem("gubnor")
     val http = IO(Http)(system)
     IO(Tcp)(system)
 
@@ -68,24 +74,30 @@ object Main extends App {
 
     implicit val executionContext = system.dispatcher
 
-
     val throttleEventBus = new ThrottleEventBus()
     val hitCountEventBus = new APIHitEventBus()
 
-    val throttle1 = system.actorOf(LeakyBucketThrottleActor.props(
-      APIHit("*", "*"),
-      throttleEventBus,
-      hitCountEventBus,
-      bucketSize = 20000, drainFrequency = 1 seconds, drainSize = 5000))
+    def mkThrottle(co: ConfigObject, index: Int) = {
+      implicit def asFiniteDuration(d: java.time.Duration) =
+        scala.concurrent.duration.Duration.fromNanos(d.toNanos)
+      val cfg = co.toConfig
+      val path = cfg.getString("path")
+      val realm = cfg.getString("realm")
+      val bucketSize = cfg.getInt("bucketSize")
+      val drainFrequency: FiniteDuration = cfg.getDuration("drainFrequency")
+      val drainSize = cfg.getInt("drainSize")
+      val ta = system.actorOf(LeakyBucketThrottleActor.props(
+        APIHit(path, realm),
+        throttleEventBus,
+        hitCountEventBus,
+        bucketSize, drainFrequency, drainSize), "throttle_" + index)
+      val chk = system.actorOf(Props(new CounterCheckActor(s"$realm@$path ($drainSize/$drainFrequency max $bucketSize)", ta)))
+      ta
+    }
 
-    val throttle2 = system.actorOf(LeakyBucketThrottleActor.props(
-      APIHit("/examples/*", "*"),
-      throttleEventBus,
-      hitCountEventBus,
-      bucketSize = 10, drainFrequency = 20 minutes, drainSize = 1))
-
-    val counterChecker1 = system.actorOf(Props(new CounterCheckActor("check1", throttle1)))
-    val counterChecker2 = system.actorOf(Props(new CounterCheckActor("check2", throttle2)))
+    val throttles = systemConfig map { c =>
+      c.getObjectList("gubnor.throttles").zipWithIndex.map(z => mkThrottle(z._1, z._2))
+    }
 
     val setup = Http.HostConnectorSetup(
       host = cfg.endpointHost,
@@ -97,7 +109,7 @@ object Main extends App {
 
     http ? (setup) map {
       case Http.HostConnectorInfo(connector, _) =>
-        val service = system.actorOf(Props(new ThrottleServiceActor(throttleEventBus, hitCountEventBus, connector)))
+        val service = system.actorOf(Props(new ThrottleServiceActor(throttleEventBus, hitCountEventBus, connector)), "throttle-service")
         http ! Http.Bind(service, interface = cfg.bindInterface, port = cfg.bindPort)
     }
   }

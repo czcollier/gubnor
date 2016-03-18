@@ -3,7 +3,7 @@ package com.shw.gubnor
 import akka.actor.ActorRef
 import akka.util.Timeout
 import spray.http.HttpResponse
-import spray.routing.{HttpServiceActor, RequestContext, Route}
+import spray.routing.{HttpServiceActor, Route}
 import akka.pattern.ask
 
 import scala.concurrent.duration._
@@ -19,7 +19,7 @@ abstract class ProxyServiceActor(connector: ActorRef) extends HttpServiceActor {
     }
   }
 
- def proxy(ctx: RequestContext) =
+ val proxy: Route = ctx =>
     ctx.complete((connector ? ctx.request).mapTo[HttpResponse].map(filterHeaders))
 
 }

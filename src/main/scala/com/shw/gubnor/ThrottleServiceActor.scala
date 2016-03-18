@@ -2,9 +2,13 @@ package com.shw.gubnor
 
 import akka.actor.{ActorRef, Props}
 import com.shw.gubnor.APIHitEventBus.APIHit
-import com.shw.gubnor.Throttle.{RateOutOfBounds, RateWithinBounds}
+import com.shw.gubnor.Throttle.{ChangeLimit, CommandAck, RateOutOfBounds, RateWithinBounds}
+import shapeless.{::, HNil}
 import spray.routing._
+import kamon.spray.KamonTraceDirectives.traceName
+
 import scala.collection.mutable
+import scala.xml.NodeSeq
 
 class ThrottleServiceActor(
     throttleEventBus: ThrottleEventBus,
@@ -13,46 +17,47 @@ class ThrottleServiceActor(
 
   val logEmitter = context.actorOf(Props[LogEmitterActor])
 
-  val tempRealm = "realm1"
-
   val throttled = mutable.Set[APIHit]()
 
   def settings = context.system.settings
+
+  val realm: Directive1[String] = {
+    entity(as[NodeSeq]).hmap {
+      case body :: HNil =>
+        (body \ "authentication" \ "simple" \ "realm").text
+    }
+  }
 
   override def preStart = {
     throttleEventBus.subscribe(self, APIHit("*", "*"))
   }
 
-  val throttledRoute: Route = ctx =>
-    ctx.complete(503, "throttled")
+  val throttle: Route = ctx => ctx.complete(503, "throttled")
 
-  val openRoute: Route = { ctx: RequestContext =>
-    val hit = APIHit(ctx.request.uri.path.toString, tempRealm)
-    apiHitEventBus.publish(hit)
-    println("throttled: " + throttled)
-    val isThrottled = throttled.collectFirst {
-      case t => hit.matches(t)
-    }.getOrElse(false)
+  val throttling: Route = path(RestPath) { p =>
+    traceName("gubnor-throttles") {
+        realm { r =>
+          val hit = APIHit(p.toString, r)
+          apiHitEventBus.publish(hit)
 
-    println("is throttled: " + isThrottled)
-    if (isThrottled) ctx.complete(503, "throttled") else proxy(ctx)
+          val isThrottled = throttled.collectFirst {
+            case t => hit.matches(t)
+          }.getOrElse(false)
+          if (isThrottled) throttle else proxy
+        }
+    }
   }
 
-  val receiveThrottled: Receive = runRoute(throttledRoute) orElse {
-    case RateWithinBounds(n) => context.become(receiveOpen)
-  }
-
-  val receiveOpen: Receive = runRoute(openRoute) orElse manageThrottled
+  def receive = runRoute(throttling) orElse manageThrottled
 
   def manageThrottled: Receive = {
-    case RateOutOfBounds(n) => throttled += n
-    case RateWithinBounds(n) => throttled -= n
+    case c@RateOutOfBounds(n) => {
+      throttled += n
+    }
+    case c@RateWithinBounds(n) => {
+      throttled -= n
+    }
   }
-
-  def receive = {
-    receiveOpen
-  }
-
   def emit(capture: String): Unit = {
     logEmitter ! capture
   }

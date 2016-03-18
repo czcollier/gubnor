@@ -8,9 +8,9 @@ class LeakyBucketThrottleActor(
     matchSpec: APIHit,
     eventBus: ThrottleEventBus,
     hits: APIHitEventBus,
-    bucketSize: Long = 2000,
-    drainFrequency: FiniteDuration = 1 second,
-    drainSize: Long = 300) extends Actor {
+    var bucketSize: Long = 2000,
+    var drainFrequency: FiniteDuration = 1 second,
+    var drainSize: Long = 300) extends Actor {
   import Throttle._
 
   var counter = 0L
@@ -54,8 +54,8 @@ class LeakyBucketThrottleActor(
 
   def commonEvents: Receive = {
     case GetValue => sender ! CounterValue(counter)
-    //case ChangeLimit(v) => bucketSize = v
-    //case ChangeFrequency(v) => drainFrequency = v
+    case ChangeLimit(v) => bucketSize = v
+    case ChangeFrequency(v) => drainFrequency = v
   }
 }
 
