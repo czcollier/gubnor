@@ -8,6 +8,13 @@ import akka.pattern.ask
 
 import scala.concurrent.duration._
 
+/**
+  * Given a Spray HTTP connector, this actor uses the Spray host-level client API
+  * to pass requests directly on to the configured host and respond with that hosts's response
+  * (reverse proxy)
+  *
+  * @param connector
+  */
 abstract class ProxyServiceActor(connector: ActorRef) extends HttpServiceActor {
   implicit val timeout: Timeout = Timeout(5 seconds)
   implicit val ec = context.system.dispatcher

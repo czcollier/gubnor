@@ -3,12 +3,19 @@ package com.shw.gubnor
 import akka.actor.{Actor, Props, Terminated}
 import akka.pattern.ask
 import akka.util.Timeout
-import com.shw.gubnor.CounterEvents._
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
+/**
+  * Simple counting actor.  Not currently used in gubnor anywhere.
+  * Retained because CounterPoolActor here serves as a concise example
+  * of how to create a pool of actors and route to them.
+  * @param name
+  */
 class CounterActor(name: String) extends Actor {
+
+  import CounterEvents._
 
   var counter = 0L
 
@@ -27,6 +34,8 @@ object CounterActor  {
 import akka.routing.{ ActorRefRoutee, RoundRobinRoutingLogic, Router }
 
 class CounterPoolActor(name: String, numRoutees: Int) extends Actor {
+
+  import CounterEvents._
 
   implicit val ec = context.system.dispatcher
   implicit val timeout: Timeout = Timeout(5 seconds)

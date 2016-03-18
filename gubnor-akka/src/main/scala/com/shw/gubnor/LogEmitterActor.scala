@@ -31,7 +31,6 @@ object LogEmitterActor {
     def optFmt(a: Any) = {
       a match {
         case p: Product => productToLogLine(p)
-        case x:Option[_] => x.stringOrBlank
         case x => x
       }
     }

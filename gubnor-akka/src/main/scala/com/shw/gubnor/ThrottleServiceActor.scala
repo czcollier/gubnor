@@ -2,7 +2,7 @@ package com.shw.gubnor
 
 import akka.actor.{ActorRef, Props}
 import com.shw.gubnor.APIHitEventBus.APIHit
-import com.shw.gubnor.Throttle.{ChangeLimit, CommandAck, RateOutOfBounds, RateWithinBounds}
+import com.shw.gubnor.ThrottleEvents.{RateOutOfBounds, RateWithinBounds}
 import shapeless.{::, HNil}
 import spray.routing._
 import kamon.spray.KamonTraceDirectives.traceName
@@ -14,6 +14,8 @@ class ThrottleServiceActor(
     throttleEventBus: ThrottleEventBus,
     apiHitEventBus: APIHitEventBus,
     connector: ActorRef) extends ProxyServiceActor(connector) {
+
+  import ThrottleEvents._
 
   val logEmitter = context.actorOf(Props[LogEmitterActor])
 
@@ -51,15 +53,8 @@ class ThrottleServiceActor(
   def receive = runRoute(throttling) orElse manageThrottled
 
   def manageThrottled: Receive = {
-    case c@RateOutOfBounds(n) => {
-      throttled += n
-    }
-    case c@RateWithinBounds(n) => {
-      throttled -= n
-    }
-  }
-  def emit(capture: String): Unit = {
-    logEmitter ! capture
+    case RateOutOfBounds(n) =>  throttled += n
+    case RateWithinBounds(n) => throttled -= n
   }
 }
 

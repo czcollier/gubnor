@@ -4,7 +4,7 @@ import akka.actor.ActorRef
 import akka.event.{ActorEventBus, SubchannelClassification}
 import akka.util.Subclassification
 import com.shw.gubnor.APIHitEventBus.APIHit
-import com.shw.gubnor.Throttle.RateBoundaryEvent
+import com.shw.gubnor.ThrottleEvents.RateBoundaryEvent
 
 class PathPrefixSubclassification extends Subclassification[APIHit] {
   override def isEqual(h1: APIHit, h2: APIHit): Boolean = h1 == h2

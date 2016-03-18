@@ -4,14 +4,17 @@ import com.shw.gubnor.APIHitEventBus.APIHit
 
 import scala.concurrent.duration.FiniteDuration
 
-class Throttle {
-}
+/**
+  * Events accepted and sent by throttles (throttle API)
+  */
+object ThrottleEvents {
 
-object Throttle {
-  case object Tick
+  //accepts
   trait ChangeCommand
   case class ChangeLimit(v: Long) extends ChangeCommand
   case class ChangeFrequency(v: FiniteDuration) extends ChangeCommand
+
+  //sends
   case class CommandAck[T <: ChangeCommand](cmd: T)
   trait RateBoundaryEvent { val key: APIHit }
   case class RateOutOfBounds(key: APIHit) extends RateBoundaryEvent
