@@ -9,16 +9,12 @@ import com.shw.gubnor.APIHitEventBus.APIHit
   * https://en.wikipedia.org/wiki/Leaky_bucket
   *
   * @param matchSpec API calls that match this realm and path pattern will be throttled by this actor
-  * @param eventBus Throttle message event bus this throttle will publish to
-  * @param hits API hit event bus this throttle will listen on
   * @param bucketSize size of the leaky bucket
   * @param drainFrequency rate at which the actor will send itself drain events
   * @param drainSize how much to drain the bucket upon each drain event
   */
-class LeakyBucketThrottleActor(
+abstract class LeakyBucketThrottleActor(
     matchSpec: APIHit,
-    eventBus: ThrottleEventBus,
-    hits: APIHitEventBus,
     var bucketSize: Long = 2000,
     var drainFrequency: FiniteDuration = 1 second,
     var drainSize: Long = 300) extends Actor {
@@ -31,14 +27,12 @@ class LeakyBucketThrottleActor(
 
   import context.dispatcher
 
+  def sendRateBoundaryEvent[T <: RateBoundaryEvent](e: T): Unit
+
   var counter = 0L
 
   val tick =
     context.system.scheduler.schedule(drainFrequency, drainFrequency, self, LeakTick)
-
-  override def preStart = {
-    hits.subscribe(self, matchSpec)
-  }
 
   def receive = withinLimit
 
@@ -46,7 +40,8 @@ class LeakyBucketThrottleActor(
     case APIHit(path, realm) => {
       counter += 1
       if (counter >= bucketSize) {
-        eventBus.publish(RateOutOfBounds(matchSpec))
+        sendRateBoundaryEvent(RateOutOfBounds(matchSpec))
+        //eventBus.publish(RateOutOfBounds(matchSpec))
         context.become(overLimit)
       }
     }
@@ -62,7 +57,7 @@ class LeakyBucketThrottleActor(
     case LeakTick => {
       counter = if (counter < drainSize) 0 else counter - drainSize
       if (counter < bucketSize) {
-        eventBus.publish(RateWithinBounds(matchSpec))
+        sendRateBoundaryEvent(RateWithinBounds(matchSpec))
         context.become(withinLimit)
       }
     }
@@ -76,12 +71,6 @@ class LeakyBucketThrottleActor(
 }
 
 object LeakyBucketThrottleActor {
-  def props(matchSpec: APIHit,
-            eventBus: ThrottleEventBus,
-            hits: APIHitEventBus,
-            bucketSize: Long = 2000,
-            drainFrequency: FiniteDuration = 1 second,
-            drainSize: Long = 300) = Props(new LeakyBucketThrottleActor(matchSpec, eventBus, hits, bucketSize, drainFrequency, drainSize))
 
   case object LeakTick
 }

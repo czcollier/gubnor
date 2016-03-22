@@ -1,6 +1,6 @@
 package com.shw.gubnor
 
-import akka.actor.{ActorSystem, Props}
+import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.io.{IO, Tcp}
 import com.typesafe.config.{Config, ConfigObject}
 import scopt.OptionParser
@@ -9,6 +9,7 @@ import spray.can.Http.ClientConnectionType
 import akka.pattern.ask
 import akka.util.Timeout
 import com.shw.gubnor.APIHitEventBus.APIHit
+import com.shw.gubnor.RouteBasedThrottleServiceActor.Register
 import kamon.Kamon
 
 import scala.collection.JavaConversions._
@@ -57,7 +58,7 @@ object Main extends App {
     val throttleEventBus = new ThrottleEventBus()
     val hitCountEventBus = new APIHitEventBus()
 
-    def mkThrottle(co: ConfigObject, index: Int) = {
+    def mkThrottle(co: ConfigObject, index: Int, service: ActorRef) = {
       implicit def asFiniteDuration(d: java.time.Duration) =
         scala.concurrent.duration.Duration.fromNanos(d.toNanos)
       val cfg = co.toConfig
@@ -66,18 +67,15 @@ object Main extends App {
       val bucketSize = cfg.getInt("bucketSize")
       val drainFrequency: FiniteDuration = cfg.getDuration("drainFrequency")
       val drainSize = cfg.getInt("drainSize")
-      val ta = system.actorOf(LeakyBucketThrottleActor.props(
-        APIHit(path, realm),
-        throttleEventBus,
-        hitCountEventBus,
-        bucketSize, drainFrequency, drainSize), "throttle_" + index)
+      val hit = APIHit(path, realm)
+      val ta = system.actorOf(RouteBasedLeakyBucketThrottleActor.props(
+        hit,
+        bucketSize, drainFrequency, drainSize, service), "throttle_" + index)
+      service ! Register(hit, ta)
       val chk = system.actorOf(Props(new CounterCheckActor(s"$realm@$path ($drainSize/$drainFrequency max $bucketSize)", ta)))
       ta
     }
 
-    val throttles = systemConfig map { c =>
-      c.getObjectList("gubnor.throttles").zipWithIndex.map(z => mkThrottle(z._1, z._2))
-    }
 
     val setup = Http.HostConnectorSetup(
       host = cfg.endpointHost,
@@ -90,7 +88,10 @@ object Main extends App {
     val http = IO(Http)(system)
     http ? (setup) map {
       case Http.HostConnectorInfo(connector, _) =>
-        val service = system.actorOf(Props(new ThrottleServiceActor(throttleEventBus, hitCountEventBus, connector)), "throttle-service")
+        val service = system.actorOf(Props(new RouteBasedThrottleServiceActor(connector)), "throttle-service")
+        val throttles = systemConfig map { c =>
+          c.getObjectList("gubnor.throttles").zipWithIndex.map(z => mkThrottle(z._1, z._2, service))
+        }
         http ! Http.Bind(service, interface = cfg.bindInterface, port = cfg.bindPort)
     }
   }

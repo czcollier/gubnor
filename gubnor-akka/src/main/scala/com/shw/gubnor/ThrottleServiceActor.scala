@@ -2,7 +2,6 @@ package com.shw.gubnor
 
 import akka.actor.{ActorRef, Props}
 import com.shw.gubnor.APIHitEventBus.APIHit
-import com.shw.gubnor.ThrottleEvents.{RateOutOfBounds, RateWithinBounds}
 import shapeless.{::, HNil}
 import spray.routing._
 import kamon.spray.KamonTraceDirectives.traceName
