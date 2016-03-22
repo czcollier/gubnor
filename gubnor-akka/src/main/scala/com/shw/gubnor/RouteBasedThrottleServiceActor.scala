@@ -16,18 +16,14 @@ class RouteBasedThrottleServiceActor(connector: ActorRef)  extends ProxyServiceA
   val throttle: Route = ctx => ctx.complete(503, "throttled")
 
   def prepPath(pathStr: String) = {
-    val isPattern = pathStr.endsWith("*")
-    val noPat = if (isPattern) pathStr.dropRight(1) else pathStr
-    val pth = noPat.split("/").foldRight(Neutral.asInstanceOf[PathMatcher[HNil]])((a, b) => a / b)
-    if (isPattern) pathPrefix(pth) else path(pth)
+    if (pathStr.endsWith("*")) pathPrefix(separateOnSlashes(pathStr.dropRight(1)))
+    else path(separateOnSlashes(pathStr))
   }
 
 
   def createThrottleRoute(spec: APIHit, throttleActor: ActorRef): ThrottleRoute = {
     val r = prepPath(spec.path) {
         realm.require(r => spec.realm == "*" || r == spec.realm) { ctx =>
-          println("matched: " + spec)
-          println("path is: " + ctx.request.uri.path.toString)
             throttleActor ! genericHit
             if (throttleRoutes(spec).throttled) throttle(ctx) else proxy(ctx)
         }
@@ -39,7 +35,7 @@ class RouteBasedThrottleServiceActor(connector: ActorRef)  extends ProxyServiceA
     case Register(s, t) =>
       println("registered: " + s + " -- " + t)
       throttleRoutes = throttleRoutes.updated(s, createThrottleRoute(s, t))
-      context.become(runRoute(buildThrottleRoute) orElse registrationReceive orElse manageThrottled)
+      context.become(runRoute(buildThrottleRoute)orElse registrationReceive orElse manageThrottled )
   }
 
   def manageThrottled: Receive = {
