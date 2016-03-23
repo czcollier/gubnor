@@ -12,6 +12,7 @@ class RouteBasedThrottleServiceActor(connector: ActorRef)  extends ProxyServiceA
   import RouteBasedThrottleServiceActor._
 
   var throttleRoutes = Map.empty[APIHit, ThrottleRoute]
+  var activeThrottles = Set.empty[APIHit]
 
   val throttle: Route = ctx => ctx.complete(503, "throttled")
 
@@ -20,12 +21,11 @@ class RouteBasedThrottleServiceActor(connector: ActorRef)  extends ProxyServiceA
     else path(separateOnSlashes(pathStr))
   }
 
-
   def createThrottleRoute(spec: APIHit, throttleActor: ActorRef): ThrottleRoute = {
     val r = prepPath(spec.path) {
         realm.require(r => spec.realm == "*" || r == spec.realm) { ctx =>
             throttleActor ! genericHit
-            if (throttleRoutes(spec).throttled) throttle(ctx) else proxy(ctx)
+            if (activeThrottles.contains(spec)) throttle(ctx) else proxy(ctx)
         }
       }
     ThrottleRoute(r, throttleActor, false)
@@ -35,21 +35,24 @@ class RouteBasedThrottleServiceActor(connector: ActorRef)  extends ProxyServiceA
     case Register(s, t) =>
       println("registered: " + s + " -- " + t)
       throttleRoutes = throttleRoutes.updated(s, createThrottleRoute(s, t))
-      context.become(runRoute(buildThrottleRoute)orElse registrationReceive orElse manageThrottled )
+      context.become(fullRoute)
   }
 
   def manageThrottled: Receive = {
-    case RateOutOfBounds(n) =>  {
-      //println("out of bounds! " + n)
-      throttleRoutes = throttleRoutes.updated(n, throttleRoutes(n).copy(throttled = true))
-    }
-
-    case RateWithinBounds(n) => throttleRoutes = throttleRoutes.updated(n, throttleRoutes(n).copy(throttled = false))
+    case RateOutOfBounds(n) =>
+      println("throttling: " + n)
+      activeThrottles = activeThrottles + n
+    case RateWithinBounds(n) =>
+      println("unthrottling: " + n)
+      activeThrottles = activeThrottles - n
   }
 
-  override def receive: Receive = runRoute(buildThrottleRoute) orElse registrationReceive orElse manageThrottled
+  def fullRoute = runRoute(buildThrottleRoute) orElse registrationReceive orElse manageThrottled
+
+  override def receive: Receive = fullRoute
 
   def buildThrottleRoute: Route = {
+    println("regenerating route")
     throttleRoutes.foldRight[Route](proxy) { (acc, next) =>
       acc._2.route ~ next
     }

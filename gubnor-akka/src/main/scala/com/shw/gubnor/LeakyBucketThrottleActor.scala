@@ -41,7 +41,6 @@ abstract class LeakyBucketThrottleActor(
       counter += 1
       if (counter >= bucketSize) {
         sendRateBoundaryEvent(RateOutOfBounds(matchSpec))
-        //eventBus.publish(RateOutOfBounds(matchSpec))
         context.become(overLimit)
       }
     }

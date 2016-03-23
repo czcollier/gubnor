@@ -19,7 +19,7 @@ object Build extends sbt.Build {
     .settings(aspectjSettings: _*)
     .settings(
       organization := "com.shw",
-      version := "0.1.0",
+      version := "0.1.0-routed",
       scalaVersion := "2.11.7",
       javaOptions in run <++= AspectjKeys.weaverOptions in Aspectj,
       fork in run := true,
