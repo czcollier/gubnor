@@ -1,8 +1,62 @@
 package com.shw.gubnor
 
-/**
-  * Created by ccollier on 3/23/16.
-  */
-class HttpLoadBalancer {
+import akka.actor.{Actor, ActorRef, Props}
+import akka.routing._
+import com.shw.gubnor.HttpLoadBalancer.{AddConnector, Monitored, MonitoredMode}
 
+class HttpLoadBalancer extends Actor {
+  var connectors = List.empty[ActorRefRoutee]
+  var router = Router(RoundRobinRoutingLogic())
+  var monitoredMode = false
+
+  def manageConnectors: Receive = {
+    case AddConnector(c) =>
+      println("adding connector: " + c)
+      val routee = ActorRefRoutee(c)
+      connectors = routee :: connectors
+      router = router.addRoutee(routee)
+      context.watch(c)
+    case MonitoredMode(v) =>
+      println("monitored mode: " + v)
+      monitoredMode = v
+  }
+  def handleRequests: Receive = {
+    case Monitored(msg) =>
+      val origin  = sender
+      monitored(origin, msg)
+    case msg =>
+      val origin = sender
+      if (monitoredMode) monitored(origin, msg)
+      else router.route(msg, origin)
+  }
+
+  def monitored(origin: ActorRef, msg: Any) = {
+    val ta = context.actorOf(Props(new ResponseMonitor(origin)))
+    router.route(msg, ta)
+  }
+
+  def receive = manageConnectors orElse handleRequests
+}
+
+object HttpLoadBalancer {
+  case class AddConnector(connector: ActorRef)
+  case class MonitoredMode(on: Boolean = true)
+  case class Monitored[T](payload: T)
+}
+
+/**
+  * This implements a temporary Actor that is created for each request and
+  * would contain logic for monitoring response times, or anything else we
+  * would want to monitor, from endpoints.  We could use this information
+  * to inform decisions about whether to kill endpoints because of bad/slow
+  * behavior, judge relative business of endpoints, etc.
+  *
+  * @param respondTo
+  */
+class ResponseMonitor(val respondTo: ActorRef) extends Actor {
+  def receive = {
+    case res =>
+      respondTo ! res
+      context.stop(self)
+  }
 }
