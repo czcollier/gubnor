@@ -19,7 +19,7 @@ object Build extends sbt.Build {
     .settings(aspectjSettings: _*)
     .settings(
       organization := "com.shw",
-      version := "0.1.0-routed",
+      version := "0.1.0-bus",
       scalaVersion := "2.11.7",
       javaOptions in run <++= AspectjKeys.weaverOptions in Aspectj,
       fork in run := true,
@@ -28,9 +28,10 @@ object Build extends sbt.Build {
       javaOptions in reStart += "-Dconfig.file=gubnor.conf",
       resolvers ++= Seq( "spray repo" at "http://repo.spray.io"),
       libraryDependencies ++= Seq(
-        "com.typesafe.akka" %% "akka-actor" % akkaVersion,
-        "com.typesafe.akka" %% "akka-agent" % akkaVersion,
-        "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
+        "com.typesafe.akka" %% "akka-actor"  % akkaVersion,
+        "com.typesafe.akka" %% "akka-agent"  % akkaVersion,
+        "com.typesafe.akka" %% "akka-slf4j"  % akkaVersion,
+        "com.typesafe.akka" %% "akka-remote" % akkaVersion,
         "ch.qos.logback" % "logback-classic" % "1.0.13",
         "com.google.guava" % "guava" % "18.0",
         "io.spray" %% "spray-can" % sprayVersion,
