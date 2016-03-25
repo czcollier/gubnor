@@ -3,6 +3,7 @@ package com.shw.gubnor
 import scala.concurrent.duration._
 import akka.actor.{Actor, Props}
 import com.shw.gubnor.APIHitEventBus.APIHit
+import com.shw.gubnor.ThrottleEvents.ChangeCommand
 
 /**
   * Throttling actor that implements the leaky bucket algorithm:
@@ -66,11 +67,12 @@ abstract class LeakyBucketThrottleActor(
     case GetValue => sender ! CounterValue(counter)
     case c@ChangeLimit(v) => { bucketSize = v; sender ! CommandAck(c) }
     case c@ChangeFrequency(v) => { drainFrequency = v; sender ! CommandAck(c) }
+    case c@GetInfo => sender ! LeakyBucketThrottleConfig("name", matchSpec.path, matchSpec.realm, bucketSize, drainFrequency, drainSize)
   }
 }
 
 object LeakyBucketThrottleActor {
-
+  case object GetInfo extends ChangeCommand
   case object LeakTick
 }
 

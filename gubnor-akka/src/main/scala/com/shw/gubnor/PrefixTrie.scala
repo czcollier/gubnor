@@ -1,10 +1,11 @@
 package com.shw.gubnor
 import scala.annotation.tailrec
-import scala.collection.JavaConversions._
 import scala.collection.mutable.ListBuffer
-
+import scala.collection.mutable
 /**
-  * Created by ccollier on 3/24/16.
+  * This code shamelessly stolen from here:
+  * https://github.com/mauricio/scala-sandbox/blob/master/src/main/scala/trie/Trie.scala
+  * http://mauricio.github.io/2015/01/06/building-a-prefix-tree-in-scala.html
   */
 object PrefixTrie {
 
@@ -24,8 +25,7 @@ object PrefixTrie {
     val char : Option[Char] = None,
     var word: Option[String] = None) extends Trie {
 
-    private val children: scala.collection.mutable.Map[Char, TrieNode] =
-      new java.util.TreeMap[Char, TrieNode]()
+    private val children = mutable.Map[Char, TrieNode]()
 
     override def append(key: String) = {
 
@@ -34,9 +34,7 @@ object PrefixTrie {
           node.word = Some(key)
         } else {
           val char = key.charAt(currentIndex).toLower
-          val result = node.children.getOrElseUpdate(char, {
-            new TrieNode(Some(char))
-          })
+          val result = node.children.getOrElseUpdate(char, { new TrieNode(Some(char)) })
 
           appendHelper(result, currentIndex + 1)
         }
@@ -129,7 +127,6 @@ object PrefixTrie {
           path(index).word = None
           while ( index > 0 && continue ) {
             val current = path(index)
-
             if (current.word.isDefined) {
               continue = false
             } else {
@@ -145,7 +142,5 @@ object PrefixTrie {
         case None => false
       }
     }
-
-    override def toString() : String = s"Trie(char=${char},word=${word})"
   }
 }

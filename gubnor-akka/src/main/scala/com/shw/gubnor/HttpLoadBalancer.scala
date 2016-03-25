@@ -3,6 +3,7 @@ package com.shw.gubnor
 import akka.actor.{Actor, ActorRef, Props}
 import akka.routing._
 import com.shw.gubnor.HttpLoadBalancer.{AddConnector, Monitored, MonitoredMode}
+import com.shw.gubnor.ThrottleEvents.{ChangeCommand, CommandAck}
 
 class HttpLoadBalancer extends Actor {
   var connectors = List.empty[ActorRefRoutee]
@@ -10,15 +11,17 @@ class HttpLoadBalancer extends Actor {
   var monitoredMode = false
 
   def manageConnectors: Receive = {
-    case AddConnector(c) =>
-      println("adding connector: " + c)
-      val routee = ActorRefRoutee(c)
+    case c@AddConnector(conn) =>
+      println("adding connector: " + conn)
+      val routee = ActorRefRoutee(conn)
       connectors = routee :: connectors
       router = router.addRoutee(routee)
-      context.watch(c)
-    case MonitoredMode(v) =>
+      context.watch(conn)
+      sender ! CommandAck(c)
+    case c@MonitoredMode(v) =>
       println("monitored mode: " + v)
       monitoredMode = v
+      sender ! CommandAck(c)
   }
   def handleRequests: Receive = {
     case Monitored(msg) =>
@@ -39,8 +42,8 @@ class HttpLoadBalancer extends Actor {
 }
 
 object HttpLoadBalancer {
-  case class AddConnector(connector: ActorRef)
-  case class MonitoredMode(on: Boolean = true)
+  case class AddConnector(connector: ActorRef) extends ChangeCommand
+  case class MonitoredMode(on: Boolean = true) extends ChangeCommand
   case class Monitored[T](payload: T)
 }
 

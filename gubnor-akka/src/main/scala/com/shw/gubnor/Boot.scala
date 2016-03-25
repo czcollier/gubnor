@@ -1,6 +1,6 @@
 package com.shw.gubnor
 
-import akka.actor.{ActorRef, ActorSystem, Props}
+import akka.actor.{Actor, ActorIdentity, ActorRef, ActorSystem, Identify, Props}
 import akka.io.{IO, Tcp}
 import com.typesafe.config.{Config, ConfigObject}
 import scopt.OptionParser
@@ -46,7 +46,7 @@ object Main extends App {
     opt[Int]("actor-pool-size")      abbr("ps") action { (x, c) => c.copy(actorPoolSize = x) } text (s"for experimenting with pool sizes of various kinds of actors")
   }
 
-  cliOptsParser.parse(args, GubnorConfig()) map { cfg =>
+  cliOptsParser.parse(args, GubnorConfig()) foreach { cfg =>
 
     config = Some(cfg)
     implicit val system = ActorSystem("gubnor")
@@ -61,14 +61,14 @@ object Main extends App {
 
     def mkThrottle(tc: LeakyBucketThrottleConfig, service: ActorRef) = {
       val hit = APIHit(tc.path, tc.realm)
-      val ta = system.actorOf(EventBusLeakyBucketThrottleActor.props(
+      val throttle = system.actorOf(EventBusLeakyBucketThrottleActor.props(
         hit,
         throttleEventBus,
         hitCountEventBus,
         tc.bucketSize, tc.drainFrequency, tc.drainSize), "throttle_" + tc.name)
+      println("added throttle " + throttle.path)
+      throttle
       //service ! Register(hit, ta)
-      //val chk = system.actorOf(Props(new CounterCheckActor(s"$realm@$path ($drainSize/$drainFrequency max $bucketSize)", ta)))
-      ta
     }
 
     def mkEndpoint(co: ConfigObject) = {
@@ -100,13 +100,8 @@ object Main extends App {
 
       gubnorSettings.throttles.map(mkThrottle(_, service))
 
-      http ! Http.Bind(service, interface = cfg.bindInterface, port = cfg.bindPort)
-    }
-
-    (io.Source.stdin.getLines).foreach { cmd =>
-      if (cmd == "off") router ! (MonitoredMode(false))
-      if (cmd == "on") router ! (MonitoredMode(true))
-      print("~~>: ")
+      http ? Http.Bind(service, interface = cfg.bindInterface, port = cfg.bindPort) map { bound =>
+        println("bound:" + bound) }
     }
   }
 }
