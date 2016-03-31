@@ -1,8 +1,9 @@
 package com.shw.gubnor
 
 import akka.actor.{ActorRef, Props}
+import com.rklaehn.radixtree.RadixTree
 import com.shw.gubnor.APIHitEventBus.APIHit
-import com.shw.gubnor.PrefixTrie.Trie
+import .Trie
 import shapeless.{::, HNil}
 import spray.routing._
 import kamon.spray.KamonTraceDirectives.traceName
@@ -21,7 +22,7 @@ class ThrottleServiceActor(
   val logEmitter = context.actorOf(Props[LogEmitterActor])
 
   val throttled = mutable.Set[APIHit]()
-  var throttled2 = Trie()
+  var throttled2 = RadixTree[String, Boolean]()
 
   def settings = context.system.settings
 
@@ -36,7 +37,7 @@ class ThrottleServiceActor(
     throttleEventBus.subscribe(self, APIHit("*", "*"))
   }
 
-  val throttle: Route = ctx => ctx.complete(StatusCodes.BandwidthLimitExceeded, "request limit exceeded")
+  val throttle: Route = ctx => ctx.complete(StatusCodes.TooManyRequests, "request limit exceeded")
 
   val throttling: Route = path(RestPath) { p =>
     traceName("gubnor-throttles") {
@@ -44,8 +45,8 @@ class ThrottleServiceActor(
           val hit = APIHit(p.toString, r)
           apiHitEventBus.publish(hit)
           println("checking: " + p.toString)
-          val matches = throttled2.findPrefixesOf(p.toString)
-          val isThrottled = matches.nonEmpty || throttled.contains(hit)
+          val matches = throttled2.filterPrefixesOf(p.toString)
+          val isThrottled = ! matches.isEmpty || throttled.contains(hit)
           if (isThrottled) throttle else proxy
         }
     }
@@ -53,14 +54,16 @@ class ThrottleServiceActor(
 
   def receive = runRoute(throttling) orElse manageThrottled
 
-  def printThrottled = throttled2.foreach(println)
-
   def addThrottled(h: APIHit) = {
-    if (h.path.endsWith("*")) throttled2 append h.path.dropRight(1) else throttled.add(h)
+    if (h.path.endsWith("*")) {
+      val newEntries = (h.path.dropRight(1) -> true) :: throttled2.entries.toList
+      throttled2 = RadixTree(newEntries: _*)
+    } else throttled.add(h)
     println("added: " + h.path)
   }
   def removeThrottled(h: APIHit) = {
-    if (h.path.endsWith("*")) throttled2 remove h.path.dropRight(1) else throttled.remove(h)
+    val newEntries = throttled2.entries.filterNot(_._1 == h.path.dropRight(1)).toSeq
+    if (h.path.endsWith("*")) throttled2 = RadixTree(newEntries: _*) else throttled.remove(h)
   }
 
   def manageThrottled: Receive = {

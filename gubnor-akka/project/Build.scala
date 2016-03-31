@@ -22,7 +22,9 @@ object Build extends sbt.Build {
   mergeStrategy in assembly := AspectJMergeStrategy.customMergeStrategy,
   scalacOptions ++= Seq("-feature", "-language:implicitConversions", "-language:postfixOps"),
   javaOptions in reStart += "-Dconfig.file=gubnor.conf",
-  resolvers ++= Seq( "spray repo" at "http://repo.spray.io"),
+  resolvers ++= Seq(
+    "spray repo" at "http://repo.spray.io",
+    "Local Maven Repository" at "file:///" + Path.userHome.absolutePath + "/.m2/repository"),
   libraryDependencies ++= Seq(
     "com.typesafe.akka" %% "akka-actor"  % akkaVersion,
     "com.typesafe.akka" %% "akka-agent"  % akkaVersion,
@@ -36,7 +38,7 @@ object Build extends sbt.Build {
     "io.spray" %%  "spray-json" % "1.3.1",
     "org.scala-lang.modules" %% "scala-xml" % "1.0.3",
     "com.github.scopt" %% "scopt" % "3.3.0",
-
+    "com.rklaehn" %% "radixtree_sjs0.6" % "0.2.1-shw",
     //"com.typesafe.akka" %% "akka-testkit" % "2.3.6",
 
     "io.kamon" %% "kamon-core" % kamonVersion,
@@ -46,7 +48,7 @@ object Build extends sbt.Build {
     "io.kamon" %% "kamon-spray" % kamonVersion )
   )
 
-  lazy val soaker = Project("gubnor", file("."))
+  lazy val gubnor = Project("gubnor", file("."))
     .settings(Revolver.settings: _*)
     .settings(assemblySettings: _*)
     .settings(aspectjSettings: _*)
@@ -56,5 +58,5 @@ object Build extends sbt.Build {
     .settings(Revolver.settings: _*)
     .settings(assemblySettings: _*)
     .settings(aspectjSettings: _*)
-    .settings(commonSettings: _*).dependsOn(soaker)
+    .settings(commonSettings: _*).dependsOn(gubnor)
 }

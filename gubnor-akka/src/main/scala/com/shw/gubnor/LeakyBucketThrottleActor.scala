@@ -69,6 +69,11 @@ abstract class LeakyBucketThrottleActor(
     case c@ChangeFrequency(v) => { drainFrequency = v; sender ! CommandAck(c) }
     case c@GetInfo => sender ! LeakyBucketThrottleConfig("name", matchSpec.path, matchSpec.realm, bucketSize, drainFrequency, drainSize)
   }
+
+  override def postStop(): Unit = {
+    tick.cancel()
+  }
+
 }
 
 object LeakyBucketThrottleActor {
