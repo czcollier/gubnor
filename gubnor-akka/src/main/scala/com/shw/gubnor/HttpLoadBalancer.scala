@@ -1,28 +1,50 @@
 package com.shw.gubnor
 
 import akka.actor.{Actor, ActorRef, Props}
+import akka.io.IO
 import akka.routing._
-import com.shw.gubnor.HttpLoadBalancer.{AddConnector, Monitored, MonitoredMode}
+import akka.pattern.ask
+import akka.util.Timeout
+import com.shw.gubnor.HttpLoadBalancer._
 import com.shw.gubnor.ThrottleEvents.{ChangeCommand, CommandAck}
+import spray.can.Http
+import spray.can.Http.ClientConnectionType
+
+import scala.concurrent.duration._
+import scala.util.Success
 
 class HttpLoadBalancer extends Actor {
-  var connectors = List.empty[ActorRefRoutee]
+  var connectors = Map.empty[ConnectorDef, ActorRefRoutee]
   var router = Router(RoundRobinRoutingLogic())
   var monitoredMode = false
 
   def manageConnectors: Receive = {
-    case c@AddConnector(conn) =>
-      println("adding connector: " + conn)
-      val routee = ActorRefRoutee(conn)
-      connectors = routee :: connectors
-      router = router.addRoutee(routee)
-      context.watch(conn)
-      sender ! CommandAck(c)
+    case a@AddConnector(host, port) =>
+      implicit val sys = context.system
+      implicit val ctx = context.system.dispatcher
+      implicit val timeout: Timeout = Timeout(5 seconds)
+      val setup = Http.HostConnectorSetup(host=host, port=port, connectionType=ClientConnectionType.Direct)
+      val origin = sender
+      IO(Http) ? setup andThen {
+        case Success(Http.HostConnectorInfo(connector, _)) =>
+          val routee = ActorRefRoutee(connector)
+          connectors = connectors + (a -> routee)
+          router = router.addRoutee(routee)
+          context.watch(connector)
+          origin ! CommandAck(a)
+      }
+    case r@RemoveConnector(host, port) =>
+      connectors.get(r) map { c =>
+        println("removing connector: " + r)
+        router = router.removeRoutee(c)
+        context.unwatch(c.ref)
+      }
     case c@MonitoredMode(v) =>
       println("monitored mode: " + v)
       monitoredMode = v
       sender ! CommandAck(c)
   }
+
   def handleRequests: Receive = {
     case Monitored(msg) =>
       val origin  = sender
@@ -42,7 +64,10 @@ class HttpLoadBalancer extends Actor {
 }
 
 object HttpLoadBalancer {
-  case class AddConnector(connector: ActorRef) extends ChangeCommand
+  abstract class ConnectorDef(host: String, port: Int)
+  case class AddConnector(host: String, port: Int) extends ConnectorDef(host, port) with ChangeCommand
+  case class RemoveConnector(host: String, port: Int) extends ConnectorDef(host, port) with ChangeCommand
+  case class ConnectorAdded(host: String, port: Int, connector: ActorRef) extends ChangeCommand
   case class MonitoredMode(on: Boolean = true) extends ChangeCommand
   case class Monitored[T](payload: T)
 }

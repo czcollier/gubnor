@@ -13,11 +13,15 @@ import scala.collection.JavaConversions._
 class GubnorSettingsImpl(config: Config) extends Extension {
   def cfgName(n: String) = "gubnor." + n
 
+  val bindHost: String = config.getString(cfgName("bind-host"))
+
+  val bindPort: Int = config.getInt(cfgName("bind-port"))
+
   val throttles = config.getObjectList(cfgName("throttles")) collect {
     case LeakyBucketThrottleConfig(c) => c
   }
   val endpoints = config.getObjectList(cfgName("endpoints")) collect {
-    case EndpointConfig(e) => e
+    case EndpointConfig(e) => { println("got config: " + e); e }
   }
 }
 

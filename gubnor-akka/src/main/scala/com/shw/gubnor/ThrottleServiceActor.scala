@@ -1,13 +1,13 @@
 package com.shw.gubnor
 
 import akka.actor.{ActorRef, Props}
+import akka.event.Logging
 import com.rklaehn.radixtree.RadixTree
 import com.shw.gubnor.APIHitEventBus.APIHit
-import .Trie
 import shapeless.{::, HNil}
 import spray.routing._
 import kamon.spray.KamonTraceDirectives.traceName
-import spray.http.{HttpRequest, StatusCodes}
+import spray.http.StatusCodes
 
 import scala.collection.mutable
 import scala.xml.NodeSeq
@@ -19,7 +19,7 @@ class ThrottleServiceActor(
 
   import ThrottleEvents._
 
-  val logEmitter = context.actorOf(Props[LogEmitterActor])
+  val log = Logging.getLogger(context.system, self)
 
   val throttled = mutable.Set[APIHit]()
   var throttled2 = RadixTree[String, Boolean]()
@@ -29,7 +29,7 @@ class ThrottleServiceActor(
   val realm: Directive1[String] = {
     entity(as[NodeSeq]).hmap {
       case body :: HNil =>
-        (body \ "authentication" \ "simple" \ "realm").text
+        (body \  "authentication" \ "simple" \ "realm").text
     }
   }
 
@@ -44,7 +44,7 @@ class ThrottleServiceActor(
         realm { r =>
           val hit = APIHit(p.toString, r)
           apiHitEventBus.publish(hit)
-          println("checking: " + p.toString)
+          log.debug(s"checking: $r@${p.toString}")
           val matches = throttled2.filterPrefixesOf(p.toString)
           val isThrottled = ! matches.isEmpty || throttled.contains(hit)
           if (isThrottled) throttle else proxy
@@ -76,6 +76,4 @@ object ThrottleServiceActor {
   def props(throttleEventBus: ThrottleEventBus, apiHitEventBus: APIHitEventBus, connector: ActorRef): Props =
     Props(new ThrottleServiceActor(throttleEventBus, apiHitEventBus, connector))
 }
-
-
 
